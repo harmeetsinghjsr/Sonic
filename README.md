@@ -3,7 +3,7 @@
 - Open [Codespace](https://github.com/codespaces)
 - Enter this command
 ```bash
-wget https://raw.githubusercontent.com/dxzenith/Sonic-Tx-Bot/main/sonic.sh 
+wget https://raw.githubusercontent.com/harmeetsinghjsr/Sonic/master/sonic.sh 
 chmod +x sonic.sh 
 ./sonic.sh
 ```
