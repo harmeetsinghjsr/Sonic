@@ -23,8 +23,8 @@ else
 fi
 echo
 echo -e "${BOLD_BLUE}Creating project directory and navigating into it${NC}"
-mkdir -p SonicBatchTx
-cd SonicBatchTx
+mkdir -p FrontierBatchTx
+cd FrontierBatchTx
 echo
 echo -e "${BOLD_BLUE}Initializing a new Node.js project${NC}"
 echo
@@ -32,51 +32,106 @@ npm init -y
 echo
 echo -e "${BOLD_BLUE}Installing required packages${NC}"
 echo
-npm install @solana/web3.js chalk bs58
+npm install @solana/web3.js bip39 ed25519-hd-key bs58 dotenv
 echo
-echo -e "${BOLD_BLUE}Prompting for private key${NC}"
-echo
-read -p "Enter your solana wallet private key: " privkey
-echo
-echo -e "${BOLD_BLUE}Creating the Node.js script file${NC}"
-echo
-cat << EOF > zun.mjs
-import web3 from "@solana/web3.js";
-import chalk from "chalk";
-import bs58 from "bs58";
 
-const connection = new web3.Connection("https://devnet.sonic.game", 'confirmed');
+# Prompt for either a seed phrase or a private key
+echo -e "${BOLD_BLUE}Enter your Solana wallet details${NC}"
+read -p "Enter your seed phrase or private key: " wallet_input
 
-const privkey = "$privkey";
-const from = web3.Keypair.fromSecretKey(bs58.decode(privkey));
-const to = web3.Keypair.generate();
+echo -e "${BOLD_BLUE}Creating the Node.js script file for Frontier v1 network${NC}"
+echo
+cat << EOF > frontierBatchTx.js
+const {
+  Connection,
+  PublicKey,
+  LAMPORTS_PER_SOL,
+  Transaction,
+  SystemProgram,
+  sendAndConfirmTransaction,
+  Keypair,
+} = require('@solana/web3.js')
+const bip39 = require('bip39')
+const { derivePath } = require('ed25519-hd-key')
+const bs58 = require('bs58')
+require('dotenv').config()
 
-(async () => {
-    const transaction = new web3.Transaction().add(
-        web3.SystemProgram.transfer({
-          fromPubkey: from.publicKey,
-          toPubkey: to.publicKey,
-          lamports: web3.LAMPORTS_PER_SOL * 0.001,
-        }),
-      );
-    
-      
-      const txCount = 100;
-      for (let i = 0; i < txCount; i++) {
-      const signature = await web3.sendAndConfirmTransaction(
-        connection,
-        transaction,
-        [from],
-      );
-    console.log(chalk.blue('Tx hash :'), signature);
-    console.log("");
-    const randomDelay = Math.floor(Math.random() * 3) + 1;
-    await new Promise(resolve => setTimeout(resolve, randomDelay * 1000));
+const connection = new Connection('https://api.testnet.v1.sonic.game', 'confirmed')
+
+// Function to sleep for delay
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+// Function to send SOL from one account to another
+async function sendSol(fromKeypair, toPublicKey, amount) {
+  const transaction = new Transaction().add(
+    SystemProgram.transfer({
+      fromPubkey: fromKeypair.publicKey,
+      toPubkey: toPublicKey,
+      lamports: amount * LAMPORTS_PER_SOL,
+    })
+  )
+
+  const signature = await sendAndConfirmTransaction(connection, transaction, [fromKeypair])
+  console.log('Transaction confirmed with signature:', signature)
+}
+
+// Generate random addresses for testing
+function generateRandomAddresses(count) {
+  const addresses = []
+  for (let i = 0; i < count; i++) {
+    const keypair = Keypair.generate()
+    addresses.push(keypair.publicKey.toString())
+  }
+  return addresses
+}
+
+// Create Keypair from either seed phrase or private key
+async function getKeypair() {
+  const walletInput = process.env.WALLET_INPUT
+
+  if (walletInput.split(" ").length > 1) {  // Detects if it's a seed phrase
+    const seed = await bip39.mnemonicToSeed(walletInput)
+    const derivedSeed = derivePath("m/44'/501'/0'/0'", seed.toString('hex')).key
+    return Keypair.fromSeed(derivedSeed.slice(0, 32))
+  } else {  // Assume it's a private key in Base58 format
+    const decoded = bs58.decode(walletInput)
+    return Keypair.fromSecretKey(decoded)
+  }
+}
+
+;(async () => {
+  const keypair = await getKeypair()
+  const randomAddresses = generateRandomAddresses(100)
+  console.log('Generated 100 random addresses:', randomAddresses)
+
+  const amountToSend = 0.001
+
+  for (const address of randomAddresses) {
+    const toPublicKey = new PublicKey(address)
+    try {
+      await sendSol(keypair, toPublicKey, amountToSend)
+      console.log(\`Successfully sent \${amountToSend} SOL to \${address}\`)
+    } catch (error) {
+      console.error(\`Failed to send SOL to \${address}:\`, error)
+    }
+
+    // Delay of 3 seconds between sending to different addresses
+    await sleep(3000)
   }
 })();
 EOF
+
+echo
+echo -e "${BOLD_BLUE}Setting up environment variables${NC}"
+echo
+cat << EOT > .env
+WALLET_INPUT=$wallet_input
+EOT
+
 echo
 echo -e "${BOLD_BLUE}Executing the Node.js script${NC}"
 echo
-node zun.mjs
+node frontierBatchTx.js
 echo
